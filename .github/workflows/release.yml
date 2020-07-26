@@ -1,0 +1,65 @@
+name: Build and release on GitHub
+
+on:
+  workflow_dispatch:
+    inputs:
+      appid:
+        description: 'Application ID'
+        required: true
+      version:
+        description: 'Version'
+        required: true
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+
+    steps:
+    # prepare environment
+    - name: Setup xmllint
+      run: |
+        sudo apt update
+        sudo apt install --no-install-recommends -y libxml2-utils
+    - name: Set up NodeJS
+      uses: actions/setup-node@v1
+
+    # checkout repositories
+    - name: Checkout Nextcloud app
+      uses: actions/checkout@v2
+      with:
+        repository: nextcloud/${{ github.event.inputs.appid }}
+        path: ${{ github.event.inputs.appid }}
+    - name: Checkout Nextcloud server
+      uses: actions/checkout@v2
+      with:
+        repository: nextcloud/server
+        path: server
+        submodules: recursive
+
+    # install dependencies
+    - name: Install npm dependencies
+      working-directory: ${{ github.event.inputs.appid }}
+      run: npm ci
+    - name: Install PHP dependencies
+      working-directory: ${{ github.event.inputs.appid }}
+      run: composer install --prefer-dist
+
+    # prepare certificates
+    - name: Prepare app certificate
+      env:
+        NEXTCLOUD_APPSTORE_SIGNING_PRIVATE_KEY: ${{secrets.NEXTCLOUD_APPSTORE_SIGNING_PRIVATE_KEY}}
+        APP_ID: ${{ github.event.inputs.appid }}
+      run: |
+        mkdir -p $HOME/.nextcloud/certificates
+        echo "$NEXTCLOUD_APPSTORE_SIGNING_PRIVATE_KEY" > $HOME/.nextcloud/certificates/$APP_ID.key
+        curl -f --output $HOME/.nextcloud/certificates/$APP_ID.crt -L https://raw.githubusercontent.com/nextcloud/app-certificate-requests/master/$APP_ID/$APP_ID.crt
+
+    # build
+    - name: Build app
+      working-directory: ${{ github.event.inputs.appid }}
+      run: make appstore
+
+    # show status
+    - name: Show status
+      working-directory: ${{ github.event.inputs.appid }}
+      run: ls -lah build/artifacts/
