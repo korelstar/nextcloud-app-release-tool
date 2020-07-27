@@ -6,9 +6,10 @@ on:
       appid:
         description: 'Application ID'
         required: true
-      version:
-        description: 'Version'
+      ref:
+        description: 'Branch (or tag or commit)'
         required: true
+        default: 'master'
 
 jobs:
   release:
@@ -20,14 +21,15 @@ jobs:
       run: |
         sudo apt update
         sudo apt install --no-install-recommends -y libxml2-utils
-    - name: Set up NodeJS
-      uses: actions/setup-node@v1
 
     # checkout repositories
+    - name: Checkout app release tool
+      uses: actions/checkout@v2
     - name: Checkout Nextcloud app
       uses: actions/checkout@v2
       with:
         repository: nextcloud/${{ github.event.inputs.appid }}
+        ref: ${{ github.event.inputs.ref }}
         path: ${{ github.event.inputs.appid }}
     - name: Checkout Nextcloud server
       uses: actions/checkout@v2
@@ -35,6 +37,21 @@ jobs:
         repository: nextcloud/server
         path: server
         submodules: recursive
+
+    # extract release information
+    - name: Extract version
+      working-directory: ${{ github.event.inputs.appid }}
+      run: |
+        VERSION="$(xmllint --xpath '/info/version/text()' appinfo/info.xml)"
+        echo "::set-env name=VERSION::$VERSION"
+    - name: Extract changelog
+      working-directory: ${{ github.event.inputs.appid }}
+      run: |
+        CHANGELOG="$(php ../changelog.php CHANGELOG.md $VERSION)"
+        CHANGELOG="${CHANGELOG//'%'/'%25'}"
+        CHANGELOG="${CHANGELOG//$'\n'/'%0A'}"
+        CHANGELOG="${CHANGELOG//$'\r'/'%0D'}"
+        echo "::set-env name=CHANGELOG::$CHANGELOG"
 
     # install dependencies
     - name: Install npm dependencies
