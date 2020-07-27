@@ -14,8 +14,21 @@ on:
 jobs:
   release:
     runs-on: ubuntu-latest
+    env:
+      APP_ID: ${{ github.event.inputs.appid }}
+      REF: ${{ github.event.inputs.ref }}
+      REPOSITORY: nextcloud/${{ github.event.inputs.appid }}
 
     steps:
+    # prepare certificates
+    - name: Prepare app certificate
+      env:
+        NEXTCLOUD_APPSTORE_SIGNING_PRIVATE_KEY: ${{secrets.NEXTCLOUD_APPSTORE_SIGNING_PRIVATE_KEY}}
+      run: |
+        mkdir -p $HOME/.nextcloud/certificates
+        echo "$NEXTCLOUD_APPSTORE_SIGNING_PRIVATE_KEY" > $HOME/.nextcloud/certificates/$APP_ID.key
+        curl -sSfL --output $HOME/.nextcloud/certificates/$APP_ID.crt https://raw.githubusercontent.com/nextcloud/app-certificate-requests/master/$APP_ID/$APP_ID.crt
+
     # prepare environment
     - name: Setup xmllint
       run: |
@@ -28,15 +41,9 @@ jobs:
     - name: Checkout Nextcloud app
       uses: actions/checkout@v2
       with:
-        repository: nextcloud/${{ github.event.inputs.appid }}
+        repository: ${{ env.REPOSITORY }}
         ref: ${{ github.event.inputs.ref }}
         path: ${{ github.event.inputs.appid }}
-    - name: Checkout Nextcloud server
-      uses: actions/checkout@v2
-      with:
-        repository: nextcloud/server
-        path: server
-        submodules: recursive
 
     # extract release information
     - name: Extract version
@@ -45,34 +52,52 @@ jobs:
         VERSION="$(xmllint --xpath '/info/version/text()' appinfo/info.xml)"
         echo "::set-env name=VERSION::$VERSION"
     - name: Extract changelog
-      working-directory: ${{ github.event.inputs.appid }}
       run: |
-        CHANGELOG="$(php ../changelog.php CHANGELOG.md $VERSION)"
-        CHANGELOG="${CHANGELOG//'%'/'%25'}"
-        CHANGELOG="${CHANGELOG//$'\n'/'%0A'}"
-        CHANGELOG="${CHANGELOG//$'\r'/'%0D'}"
-        echo "::set-env name=CHANGELOG::$CHANGELOG"
+        php changelog.php $APP_ID/CHANGELOG.md $VERSION > changelog.md
+        cat changelog.md
+
+    # check and create release (draft)
+    - name: Check for existing release
+      run: curl -sSfL https://api.github.com/repos/$REPOSITORY/releases/tags/v$VERSION | jq --raw-output -f filter-release.jq
+      continue-on-error: true
+
+    - name: Check for existing release asset
+      if: env.RELEASE_ID != ''
+      run: |
+        mkdir -p $APP_ID/build/artifacts/
+        curl -sSfL --output $APP_ID/build/artifacts/$APP_ID.tar.gz https://github.com/$REPOSITORY/releases/download/v$VERSION/$APP_ID.tar.gz
+        echo "::set-env name=RELEASE_ASSET_EXISTS::true"
+      continue-on-error: true
+
+    - name: Create release draft
+      if: env.RELEASE_ID == ''
+      env:
+        GH_API_USER: ${{secrets.GH_API_USER}}
+        GH_API_PERSONAL_TOKEN: ${{secrets.GH_API_PERSONAL_TOKEN}}
+      run: |
+        jq -n --arg body "$(<changelog.md)" --arg ver "$VERSION" --arg ref "$REF" '{"tag_name":("v" + $ver), "target_commitish":$ref, "name":$ver, "draft":true, "body":$body}' > release-request.json
+        curl -sSf -u "$GH_API_USER:$GH_API_PERSONAL_TOKEN" -X POST -d@release-request.json https://api.github.com/repos/$REPOSITORY/releases | jq --raw-output -f filter-release.jq
 
     # install dependencies
     - name: Install npm dependencies
+      if: env.RELEASE_ASSET_EXISTS != 'true'
       working-directory: ${{ github.event.inputs.appid }}
       run: npm ci
     - name: Install PHP dependencies
+      if: env.RELEASE_ASSET_EXISTS != 'true'
       working-directory: ${{ github.event.inputs.appid }}
       run: composer install --prefer-dist
-
-    # prepare certificates
-    - name: Prepare app certificate
-      env:
-        NEXTCLOUD_APPSTORE_SIGNING_PRIVATE_KEY: ${{secrets.NEXTCLOUD_APPSTORE_SIGNING_PRIVATE_KEY}}
-        APP_ID: ${{ github.event.inputs.appid }}
-      run: |
-        mkdir -p $HOME/.nextcloud/certificates
-        echo "$NEXTCLOUD_APPSTORE_SIGNING_PRIVATE_KEY" > $HOME/.nextcloud/certificates/$APP_ID.key
-        curl -f --output $HOME/.nextcloud/certificates/$APP_ID.crt -L https://raw.githubusercontent.com/nextcloud/app-certificate-requests/master/$APP_ID/$APP_ID.crt
+    - name: Checkout Nextcloud server
+      if: env.RELEASE_ASSET_EXISTS != 'true'
+      uses: actions/checkout@v2
+      with:
+        repository: nextcloud/server
+        path: server
+        submodules: recursive
 
     # build
     - name: Build app
+      if: env.RELEASE_ASSET_EXISTS != 'true'
       working-directory: ${{ github.event.inputs.appid }}
       run: make appstore
 
@@ -80,3 +105,15 @@ jobs:
     - name: Show status
       working-directory: ${{ github.event.inputs.appid }}
       run: ls -lah build/artifacts/
+
+    # upload release asset
+    - name: Upload release asset
+      if: env.RELEASE_ASSET_EXISTS != 'true'
+      uses: actions/upload-release-asset@v1
+      env:
+        GITHUB_TOKEN: ${{secrets.GH_API_PERSONAL_TOKEN}}
+      with:
+        upload_url: ${{ env.RELEASE_UPLOAD_URL }}
+        asset_path: ${{ github.event.inputs.appid }}/build/artifacts/${{ github.event.inputs.appid }}.tar.gz
+        asset_name: ${{ github.event.inputs.appid }}.tar.gz
+        asset_content_type: application/gzip
