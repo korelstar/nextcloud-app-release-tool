@@ -50,7 +50,7 @@ jobs:
       working-directory: ${{ github.event.inputs.appid }}
       run: |
         VERSION="$(xmllint --xpath '/info/version/text()' appinfo/info.xml)"
-        echo "::set-env name=VERSION::$VERSION"
+        echo "VERSION=$VERSION" >> $GITHUB_ENV
     - name: Extract changelog
       run: |
         php changelog.php $APP_ID/CHANGELOG.md $VERSION > changelog.md
@@ -58,7 +58,7 @@ jobs:
 
     # check and create release (draft)
     - name: Check for existing release
-      run: curl -sSfL https://api.github.com/repos/$REPOSITORY/releases/tags/v$VERSION | jq --raw-output -f filter-release.jq
+      run: curl -sSfL https://api.github.com/repos/$REPOSITORY/releases/tags/v$VERSION | jq --raw-output -f filter-release.jq >> $GITHUB_ENV
       continue-on-error: true
 
     - name: Check for existing release asset
@@ -66,7 +66,7 @@ jobs:
       run: |
         mkdir -p $APP_ID/build/artifacts/
         curl -sSfL --output $APP_ID/build/artifacts/$APP_ID.tar.gz https://github.com/$REPOSITORY/releases/download/v$VERSION/$APP_ID.tar.gz
-        echo "::set-env name=RELEASE_ASSET_EXISTS::true"
+        echo "RELEASE_ASSET_EXISTS=true" >> $GITHUB_ENV
       continue-on-error: true
 
     - name: Create release draft
@@ -76,7 +76,7 @@ jobs:
         GH_API_PERSONAL_TOKEN: ${{secrets.GH_API_PERSONAL_TOKEN}}
       run: |
         jq -n --arg body "$(<changelog.md)" --arg ver "$VERSION" --arg ref "$REF" '{"tag_name":("v" + $ver), "target_commitish":$ref, "name":$ver, "draft":true, "body":$body}' > release-request.json
-        curl -sSf -u "$GH_API_USER:$GH_API_PERSONAL_TOKEN" -X POST -d@release-request.json https://api.github.com/repos/$REPOSITORY/releases | jq --raw-output -f filter-release.jq
+        curl -sSf -u "$GH_API_USER:$GH_API_PERSONAL_TOKEN" -X POST -d@release-request.json https://api.github.com/repos/$REPOSITORY/releases | jq --raw-output -f filter-release.jq >> $GITHUB_ENV
 
     # install dependencies
     - name: Install npm dependencies
