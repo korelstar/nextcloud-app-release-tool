@@ -30,6 +30,10 @@ jobs:
         curl -sSfL --output $HOME/.nextcloud/certificates/$APP_ID.crt https://raw.githubusercontent.com/nextcloud/app-certificate-requests/master/$APP_ID/$APP_ID.crt
 
     # prepare environment
+    - name: Set up PHP
+      uses: shivammathur/setup-php@v2
+      with:
+        php-version: '7.4'
     - name: Setup xmllint
       run: |
         sudo apt update
