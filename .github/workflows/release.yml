@@ -113,7 +113,7 @@ jobs:
     # upload release asset
     - name: Upload release asset
       if: env.RELEASE_ASSET_EXISTS != 'true'
-      uses: actions/upload-release-asset@v1
+      uses: actions/upload-release-asset@v1.0.2
       env:
         GITHUB_TOKEN: ${{secrets.GH_API_PERSONAL_TOKEN}}
       with:
