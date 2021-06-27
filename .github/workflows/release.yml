@@ -38,6 +38,10 @@ jobs:
       run: |
         sudo apt update
         sudo apt install --no-install-recommends -y libxml2-utils
+    - name: Set up Node
+      uses: actions/setup-node@v2
+      with:
+        node-version: '16'
 
     # checkout repositories
     - name: Checkout app release tool
