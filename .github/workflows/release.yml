@@ -41,7 +41,8 @@ jobs:
     - name: Set up Node
       uses: actions/setup-node@v2
       with:
-        node-version: '16'
+        node-version: '14'
+    - run: npm i -g npm@7
 
     # checkout repositories
     - name: Checkout app release tool
