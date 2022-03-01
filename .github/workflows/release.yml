@@ -46,9 +46,9 @@ jobs:
 
     # checkout repositories
     - name: Checkout app release tool
-      uses: actions/checkout@v2
+      uses: actions/checkout@v3
     - name: Checkout Nextcloud app
-      uses: actions/checkout@v2
+      uses: actions/checkout@v3
       with:
         repository: ${{ env.REPOSITORY }}
         ref: ${{ github.event.inputs.ref }}
@@ -98,7 +98,7 @@ jobs:
       run: composer install --prefer-dist
     - name: Checkout Nextcloud server
       if: env.RELEASE_ASSET_EXISTS != 'true'
-      uses: actions/checkout@v2
+      uses: actions/checkout@v3
       with:
         repository: nextcloud/server
         path: server
