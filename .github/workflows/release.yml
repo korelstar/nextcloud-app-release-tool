@@ -29,6 +29,16 @@ jobs:
         echo "$NEXTCLOUD_APPSTORE_SIGNING_PRIVATE_KEY" > $HOME/.nextcloud/certificates/$APP_ID.key
         curl -sSfL --output $HOME/.nextcloud/certificates/$APP_ID.crt https://raw.githubusercontent.com/nextcloud/app-certificate-requests/master/$APP_ID/$APP_ID.crt
 
+    # checkout repositories
+    - name: Checkout app release tool
+      uses: actions/checkout@v3
+    - name: Checkout Nextcloud app
+      uses: actions/checkout@v3
+      with:
+        repository: ${{ env.REPOSITORY }}
+        ref: ${{ github.event.inputs.ref }}
+        path: ${{ github.event.inputs.appid }}
+
     # prepare environment
     - name: Set up PHP
       uses: shivammathur/setup-php@v2
@@ -41,17 +51,7 @@ jobs:
     - name: Set up Node
       uses: actions/setup-node@v3
       with:
-        node-version: '16'
-
-    # checkout repositories
-    - name: Checkout app release tool
-      uses: actions/checkout@v3
-    - name: Checkout Nextcloud app
-      uses: actions/checkout@v3
-      with:
-        repository: ${{ env.REPOSITORY }}
-        ref: ${{ github.event.inputs.ref }}
-        path: ${{ github.event.inputs.appid }}
+        node-version-file: ${{ github.event.inputs.appid }}/package.json
 
     # extract release information
     - name: Extract version
